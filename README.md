@@ -1,36 +1,33 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Purdue Health Tracker
 
-## Getting Started
+Tells you what to eat at Purdue dining courts, and how much, based on your gym goal.
+Pulls live menus and nutrition from Purdue Dining's public API.
 
-First, run the development server:
+## Run it
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## API
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Route | What it does |
+|---|---|
+| `GET /api/locations` | Dining courts and other Purdue dining locations |
+| `GET /api/menu?location=Wiley&date=YYYY-MM-DD` | A day's menu with nutrition per item, plus the meal being served now |
+| `POST /api/targets` `{ profile }` | Daily calorie and macro targets for a profile |
+| `POST /api/recommend` `{ profile, location, meal?, date?, exclude?, lock? }` | The best plate for one meal: items, servings, hand-size portions, fit score |
+| `POST /api/compare` `{ profile, meal, date? }` | Every dining court ranked by how well it fits the goal |
 
-## Learn More
+Goals: lean bulk, cut, recomp, maintain, strength, endurance, or custom macros.
+See `src/lib/types.ts` for the `profile` shape.
 
-To learn more about Next.js, take a look at the following resources:
+## How it works
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `src/lib/purdue.ts`: fetches and caches Purdue menus and nutrition facts
+- `src/lib/targets.ts`: daily targets (Mifflin-St Jeor BMR × activity, adjusted per goal and training day)
+- `src/lib/optimizer.ts`: picks half-serving amounts with a small integer program to hit the meal's macros
+- `src/lib/portion.ts`: converts serving sizes into fists, palms, thumbs and pieces
