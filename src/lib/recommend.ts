@@ -1,7 +1,7 @@
 import { optimizeMeal, type OptimizeOptions } from "./optimizer";
 import { DINING_COURTS, getDayMenu, NotFoundError } from "./purdue";
 import { dailyTargets, mealTargets } from "./targets";
-import type { DayMenu, Meal, Profile, Recommendation } from "./types";
+import type { DayMenu, FoodItem, Meal, Profile, Recommendation } from "./types";
 
 export { NotFoundError };
 
@@ -37,9 +37,50 @@ export async function recommend(
     throw new NotFoundError(`${location} isn't serving ${name ?? "a meal"} on ${date}`);
   }
 
-  const targets = mealTargets(dailyTargets(profile), meal.name, profile.mealsPerDay);
+  const targets = mealTargets(dailyTargets(profile), meal.name, profile);
   const result = optimizeMeal(meal.items, targets, profile, opts);
-  return { location: menu.location, date, meal: meal.name, targets, ...result };
+  const hours = meal.startTime && meal.endTime ? { start: meal.startTime, end: meal.endTime } : null;
+  return { location: menu.location, date, meal: meal.name, hours, targets, ...result };
+}
+
+/** Location value meaning "pool every dining court's menu". */
+export const ALL_COURTS = "all";
+
+/**
+ * The best plate if you could take items from any dining court serving this
+ * meal. Each item lists the courts it's served at.
+ */
+export async function recommendAcrossCourts(
+  profile: Profile,
+  date: string,
+  mealName: string,
+  opts: OptimizeOptions = {},
+): Promise<Recommendation> {
+  const menus = await Promise.all(DINING_COURTS.map((court) => getDayMenu(court, date)));
+
+  const pooled = new Map<string, FoodItem>();
+  const perCourt: FoodItem[][] = [];
+  for (const menu of menus) {
+    const meal = findMeal(menu, mealName);
+    if (!meal || meal.status !== "Open") continue;
+    const courtItems: FoodItem[] = [];
+    for (const item of meal.items) {
+      const existing = pooled.get(item.id);
+      if (existing) existing.locations!.push(menu.location);
+      else pooled.set(item.id, { ...item, locations: [menu.location] });
+      courtItems.push(pooled.get(item.id)!);
+    }
+    perCourt.push(courtItems);
+  }
+  if (pooled.size === 0) throw new NotFoundError(`No dining court is serving ${mealName} on ${date}`);
+
+  // The pooled menu is big, so the solver only sees a shortlist of it and can
+  // miss a plate one court alone would find. Try each court too and keep the best.
+  const targets = mealTargets(dailyTargets(profile), mealName, profile);
+  // Single courts go first so the mix has to strictly beat them (one stop wins ties).
+  const results = [...perCourt, [...pooled.values()]].map((items) => optimizeMeal(items, targets, profile, opts));
+  const best = results.reduce((a, b) => (b.fitScore > a.fitScore ? b : a));
+  return { location: ALL_COURTS, date, meal: mealName, hours: null, targets, ...best };
 }
 
 export interface CourtComparison {

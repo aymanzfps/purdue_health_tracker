@@ -1,5 +1,5 @@
 import { ACTIVITY_MULTIPLIERS, GOALS } from "./targets";
-import type { ActivityLevel, GoalId, MacroTargets, Profile } from "./types";
+import { DAY_MEALS, type ActivityLevel, type DayMeal, type GoalId, type MacroTargets, type Profile } from "./types";
 
 export class ValidationError extends Error {}
 
@@ -38,7 +38,8 @@ export function parseProfile(raw: unknown): Profile {
     sex: p.sex,
     activity,
     goal,
-    mealsPerDay: Math.round(num(p.mealsPerDay ?? 3, "mealsPerDay", 2, 5)),
+    diningMeals: diningMeals(p.diningMeals),
+    snacksPerDay: Math.round(num(p.snacksPerDay ?? 0, "snacksPerDay", 0, 3)),
     isTrainingDay: Boolean(p.isTrainingDay),
     vegetarian: Boolean(p.vegetarian),
     vegan: Boolean(p.vegan),
@@ -51,6 +52,15 @@ export function parseProfile(raw: unknown): Profile {
   }
   if (goal === "custom") profile.custom = parseCustom(p.custom);
   return profile;
+}
+
+function diningMeals(value: unknown): DayMeal[] {
+  if (value === undefined) return [...DAY_MEALS];
+  if (!Array.isArray(value) || value.length === 0 || value.some((v) => !DAY_MEALS.includes(v))) {
+    throw new ValidationError("diningMeals must list at least one of Breakfast, Lunch, Dinner");
+  }
+  // Keep the day's order and drop duplicates.
+  return DAY_MEALS.filter((m) => value.includes(m));
 }
 
 function parseCustom(raw: unknown): MacroTargets {

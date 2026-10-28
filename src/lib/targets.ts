@@ -1,4 +1,4 @@
-import type { ActivityLevel, GoalId, MacroTargets, Profile } from "./types";
+import type { ActivityLevel, DayMeal, GoalId, MacroTargets, Profile } from "./types";
 
 export interface GoalDefinition {
   id: GoalId;
@@ -110,25 +110,37 @@ export function dailyTargets(p: Profile): MacroTargets {
   return roundTargets({ calories, protein, carbs, fat });
 }
 
-/**
- * Share of the day's food for one dining court meal. Extra meals beyond three
- * are assumed to be snacks eaten elsewhere, so dining meals cover less.
- */
-export function mealShare(mealName: string, mealsPerDay: number): number {
-  const meal = mealName.toLowerCase();
-  const snackShare = Math.max(0, mealsPerDay - 3) * 0.1;
-  const diningShare = 1 - snackShare;
+/** Relative size of each meal; shares are these weights normalized over the meals you eat. */
+const MEAL_WEIGHTS: Record<DayMeal, number> = { Breakfast: 0.25, Lunch: 0.35, Dinner: 0.4 };
+export const SNACK_SHARE = 0.1;
 
-  if (mealsPerDay <= 2) {
-    return meal.includes("breakfast") || meal.includes("brunch") ? 0.4 : 0.6;
-  }
-  const weights: Record<string, number> = { breakfast: 0.25, brunch: 0.35, lunch: 0.35, dinner: 0.4 };
-  const key = Object.keys(weights).find((k) => meal.includes(k)) ?? "lunch";
-  return weights[key] * diningShare;
+/** Which slot of the day a Purdue meal name fills ("Late Lunch" → Lunch, "Brunch" → Breakfast). */
+export function mealSlot(mealName: string): DayMeal {
+  const meal = mealName.toLowerCase();
+  if (meal.includes("breakfast") || meal.includes("brunch")) return "Breakfast";
+  if (meal.includes("dinner")) return "Dinner";
+  return "Lunch";
 }
 
-export function mealTargets(daily: MacroTargets, mealName: string, mealsPerDay: number): MacroTargets {
-  const share = mealShare(mealName, mealsPerDay);
+/**
+ * Share of the day's food for one dining court meal. Snacks come off the top;
+ * the rest is split across the meals you eat. Looking at a meal you normally
+ * skip sizes it as if you'd added it.
+ */
+export function mealShare(mealName: string, p: Pick<Profile, "diningMeals" | "snacksPerDay">): number {
+  const slot = mealSlot(mealName);
+  const meals = p.diningMeals.includes(slot) ? p.diningMeals : [...p.diningMeals, slot];
+  const totalWeight = meals.reduce((sum, m) => sum + MEAL_WEIGHTS[m], 0);
+  const diningShare = Math.max(0.5, 1 - p.snacksPerDay * SNACK_SHARE);
+  return (MEAL_WEIGHTS[slot] / totalWeight) * diningShare;
+}
+
+export function mealTargets(
+  daily: MacroTargets,
+  mealName: string,
+  p: Pick<Profile, "diningMeals" | "snacksPerDay">,
+): MacroTargets {
+  const share = mealShare(mealName, p);
   return roundTargets({
     calories: daily.calories * share,
     protein: daily.protein * share,

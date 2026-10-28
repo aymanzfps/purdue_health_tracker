@@ -11,11 +11,7 @@ export async function POST(req: Request) {
       bmr: Math.round(bmr(profile)),
       maintenance: Math.round(tdee(profile)),
       daily,
-      mealShares: {
-        breakfast: mealShare("breakfast", profile.mealsPerDay),
-        lunch: mealShare("lunch", profile.mealsPerDay),
-        dinner: mealShare("dinner", profile.mealsPerDay),
-      },
+      mealShares: Object.fromEntries(profile.diningMeals.map((m) => [m, mealShare(m, profile)])),
     };
   });
 }

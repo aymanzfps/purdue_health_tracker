@@ -4,21 +4,31 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { MacroBars } from "./MacroBars";
 import { PickRow } from "./PickRow";
+import { CourtPicker, MealPicker } from "./Pickers";
 import { PlateDiagram } from "./PlateDiagram";
-import { Card, Chips, ErrorNote, FitBadge, SectionLabel, SetupPrompt, Spinner } from "./ui";
+import { Card, ErrorNote, FitBadge, SetupPrompt, Spinner } from "./ui";
 import { api, type MenuResponse } from "@/lib/client/api";
+import {
+  ALL_COURTS,
+  courtLabel,
+  DAY_MEALS,
+  formatDay,
+  formatHours,
+  mealForNow,
+  todayInWestLafayette,
+} from "@/lib/client/meals";
 import { useProfile } from "@/lib/client/profile";
 import { DINING_COURTS } from "@/lib/courts";
 import { GOALS } from "@/lib/targets";
 import type { Recommendation } from "@/lib/types";
-import type { CourtComparison } from "@/lib/recommend";
 
 const LAST_COURT_KEY = "boilerplate.court";
+const isCourt = (c: string | null): c is string => !!c && (c === ALL_COURTS || DINING_COURTS.includes(c));
 
 function rememberedCourt(): string {
   try {
     const saved = localStorage.getItem(LAST_COURT_KEY);
-    if (saved && DINING_COURTS.includes(saved)) return saved;
+    if (isCourt(saved)) return saved;
   } catch {}
   return "Wiley";
 }
@@ -32,30 +42,39 @@ export function TodayView() {
   const [meal, setMeal] = useState<string | null>(null);
   const [menu, setMenu] = useState<MenuResponse | null>(null);
   const [rec, setRec] = useState<Recommendation | null>(null);
-  const [courts, setCourts] = useState<CourtComparison[] | null>(null);
+  const [scores, setScores] = useState<Record<string, number | undefined>>({});
   const [exclude, setExclude] = useState<string[]>([]);
   const [lock, setLock] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
 
-  // Court comes from the link (Compare page) or the last one used.
+  const isAll = court === ALL_COURTS;
+
+  // Court comes from the link (Compare / Day plan) or the last one used.
   useEffect(() => {
     const fromUrl = params.get("court");
-    setCourt(fromUrl && DINING_COURTS.includes(fromUrl) ? fromUrl : rememberedCourt());
+    setCourt(isCourt(fromUrl) ? fromUrl : rememberedCourt());
   }, [params]);
 
-  // Load the court's menu to know which meals it serves today.
+  // A single court's menu tells us which meals it serves today and when.
   useEffect(() => {
     if (!court) return;
-    const ctl = new AbortController();
-    setMenu(null);
     setError(null);
+    setMenu(null);
+    const wanted = params.get("meal");
+    if (court === ALL_COURTS) {
+      setMeal((current) => {
+        const preferred = wanted ?? current;
+        return preferred && (DAY_MEALS as readonly string[]).includes(preferred) ? preferred : mealForNow();
+      });
+      return;
+    }
+    const ctl = new AbortController();
     api
       .menu(court, ctl.signal)
       .then((m) => {
         setMenu(m);
         const open = m.meals.filter((x) => x.status === "Open").map((x) => x.name);
-        const wanted = params.get("meal");
         setMeal((current) => {
           const preferred = wanted ?? current;
           return preferred && open.includes(preferred) ? preferred : (m.currentMeal ?? open[0] ?? null);
@@ -63,13 +82,13 @@ export function TodayView() {
       })
       .catch((e: Error) => e.name !== "AbortError" && setError(e.message));
     return () => ctl.abort();
-    // `params` only matters on first load; meal changes are handled by setMeal.
+    // `params` only matters on first load; later meal changes go through setMeal.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [court, retry]);
 
-  // The recommendation for the chosen court and meal.
+  // The recommendation for the chosen court (or all courts) and meal.
   useEffect(() => {
-    if (!profile || !court || !meal || !menu) return;
+    if (!profile || !court || !meal || (!isAll && !menu)) return;
     const ctl = new AbortController();
     setRec(null);
     api
@@ -77,16 +96,25 @@ export function TodayView() {
       .then(setRec)
       .catch((e: Error) => e.name !== "AbortError" && setError(e.message));
     return () => ctl.abort();
-  }, [profile, court, meal, menu, exclude, lock]);
+  }, [profile, court, isAll, meal, menu, exclude, lock]);
 
-  // Fit at every court for the same meal, for the ranking chips.
+  // Fit scores for every court tile, plus the "best across all" tile.
   useEffect(() => {
     if (!profile || !meal) return;
     const ctl = new AbortController();
-    setCourts(null);
+    setScores({});
     api
       .compare({ profile, meal }, ctl.signal)
-      .then((r) => setCourts(r.courts))
+      .then((r) =>
+        setScores((s) => ({
+          ...s,
+          ...Object.fromEntries(r.courts.map((c) => [c.location, c.recommendation?.fitScore])),
+        })),
+      )
+      .catch(() => {});
+    api
+      .recommend({ profile, location: ALL_COURTS, meal }, ctl.signal)
+      .then((r) => setScores((s) => ({ ...s, [ALL_COURTS]: r.fitScore })))
       .catch(() => {});
     return () => ctl.abort();
   }, [profile, meal]);
@@ -114,16 +142,24 @@ export function TodayView() {
   if (!profile) return <SetupPrompt />;
 
   const goalLabel = profile.goal === "custom" ? "Custom" : GOALS[profile.goal].label;
-  const openMeals = menu?.meals.filter((m) => m.status === "Open") ?? [];
+  const meals = isAll
+    ? DAY_MEALS.map((name) => ({ name, hours: null }))
+    : (menu?.meals ?? [])
+        .filter((m) => m.status === "Open")
+        .map((m) => ({ name: m.name, hours: formatHours(m.startTime && m.endTime ? { start: m.startTime, end: m.endTime } : null) }));
+  const noMeals = !isAll && menu && meals.length === 0;
+
+  // Single-court tiles with scores, for the "rather one stop?" hint.
+  const bestSingle = DINING_COURTS.map((c) => ({ court: c, score: scores[c] }))
+    .filter((c): c is { court: string; score: number } => c.score !== undefined)
+    .sort((a, b) => b.score - a.score)[0];
+  const stops = rec && isAll ? [...new Set(rec.picks.map((p) => p.item.locations?.[0]).filter(Boolean))] : [];
 
   return (
-    <div className="space-y-4">
-      <header className="space-y-3">
-        <div className="flex items-baseline justify-between gap-2">
-          <h1 className="text-xl font-medium">
-            {court ?? "…"}
-            {meal && <span className="text-muted"> · {meal}</span>}
-          </h1>
+    <div className="space-y-5">
+      <header className="space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-muted">{formatDay(rec?.date ?? todayInWestLafayette())}</p>
           <button
             type="button"
             onClick={() => save({ ...profile, isTrainingDay: !profile.isTrainingDay })}
@@ -133,30 +169,46 @@ export function TodayView() {
             {goalLabel} · <span className="text-gold">{profile.isTrainingDay ? "training day" : "rest day"}</span>
           </button>
         </div>
-        <Chips
-          label="Dining court"
-          value={court}
-          onChange={chooseCourt}
-          options={DINING_COURTS.map((c) => ({ value: c, label: c }))}
-        />
-        {openMeals.length > 0 && (
-          <Chips
-            label="Meal"
-            value={meal}
-            onChange={chooseMeal}
-            options={openMeals.map((m) => ({ value: m.name, label: m.name }))}
-          />
-        )}
+        <h1 className="-mt-2 text-2xl font-medium">
+          {court ? courtLabel(court) : "…"}
+          {meal && <span className="text-muted"> · {meal}</span>}
+        </h1>
+        <CourtPicker courts={DINING_COURTS} value={court} scores={scores} onChange={chooseCourt} />
+        {meals.length > 0 && <MealPicker meals={meals} value={meal} onChange={chooseMeal} />}
       </header>
 
       {error && <ErrorNote message={error} onRetry={() => setRetry((n) => n + 1)} />}
-      {!error && menu && openMeals.length === 0 && (
+      {!error && noMeals && (
         <Card className="text-sm text-muted">{court} isn&apos;t serving any meals today. Try another court.</Card>
       )}
-      {!error && (!menu || (openMeals.length > 0 && !rec)) && <Spinner label="Building your plate" />}
+      {!error && !noMeals && !rec && <Spinner label={isAll ? "Searching every dining court" : "Building your plate"} />}
 
       {rec && (
         <>
+          {isAll && stops.length > 0 && (
+            <Card className="border border-gold/30 text-sm">
+              {stops.length === 1 ? (
+                <p>
+                  Mixing courts doesn&apos;t beat one stop today: everything comes from{" "}
+                  <span className="text-gold">{stops[0]}</span>.
+                </p>
+              ) : (
+                <p>
+                  Mixes items from <span className="text-gold">{stops.join(", ")}</span>.
+                </p>
+              )}
+              {bestSingle && stops.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => chooseCourt(bestSingle.court)}
+                  className="mt-1 text-xs text-muted underline-offset-2 hover:text-cream hover:underline"
+                >
+                  Rather make one stop? {bestSingle.court} scores {bestSingle.score} →
+                </button>
+              )}
+            </Card>
+          )}
+
           <Card>
             <div className="flex items-center gap-4">
               <PlateDiagram picks={rec.picks} size={128} />
@@ -206,33 +258,6 @@ export function TodayView() {
             Fist ≈ 1 cup, palm ≈ 3 oz of meat, thumb ≈ 1 tbsp. Portions are estimates from Purdue&apos;s listed serving sizes.
           </p>
         </>
-      )}
-
-      {meal && (
-        <section>
-          <SectionLabel>Best courts for {meal.toLowerCase()} right now</SectionLabel>
-          {!courts ? (
-            <div className="h-8 animate-pulse rounded-lg bg-card" />
-          ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {courts
-                .filter((c) => c.status === "ok")
-                .map((c) => (
-                  <button
-                    key={c.location}
-                    type="button"
-                    onClick={() => chooseCourt(c.location)}
-                    className={`rounded-lg px-2.5 py-1.5 text-xs ${c.location === court ? "bg-gold/15 ring-1 ring-gold" : "bg-card hover:bg-card-hi"}`}
-                  >
-                    {c.location}{" "}
-                    <span className={`tabular-nums ${(c.recommendation?.fitScore ?? 0) >= 85 ? "text-gold" : "text-warn"}`}>
-                      {c.recommendation?.fitScore}
-                    </span>
-                  </button>
-                ))}
-            </div>
-          )}
-        </section>
       )}
     </div>
   );

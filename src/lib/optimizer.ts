@@ -1,4 +1,4 @@
-import solver, { type Model } from "javascript-lp-solver";
+import solver, { type Model, type Solution } from "javascript-lp-solver";
 import { portionVisual } from "./portion";
 import type {
   FoodItem,
@@ -56,14 +56,14 @@ const PICK_COST: Partial<Record<ItemRole, number>> & { default: number } = {
 
 /** How many candidates of each role go into the solver, to keep it fast. */
 const CANDIDATES_PER_ROLE: Record<ItemRole, number> = {
-  protein: 8,
-  carb: 6,
-  veg: 5,
-  fruit: 4,
-  dairy: 3,
-  sauce: 3,
-  dessert: 3,
-  other: 4,
+  protein: 7,
+  carb: 5,
+  veg: 4,
+  fruit: 3,
+  dairy: 2,
+  sauce: 2,
+  dessert: 2,
+  other: 3,
 };
 
 const ROLE_LIMITS: Partial<Record<ItemRole, number>> = { protein: 2, carb: 2, sauce: 1, dessert: 1 };
@@ -101,14 +101,27 @@ export function optimizeMeal(
   opts: OptimizeOptions = {},
 ): OptimizeResult {
   const lock = new Set(opts.lock ?? []);
-  const candidates = shortlist(filterForProfile(items, profile, opts), lock);
+  let candidates = shortlist(filterForProfile(items, profile, opts), lock);
   if (candidates.length === 0) return { picks: [], totals: emptyNutrition(), fitScore: 0 };
 
-  const model = buildModel(candidates, targets, lock);
-  const solution = solver.Solve(model);
+  let solution = solver.Solve(buildModel(candidates, targets, lock));
+  if (!isUsable(solution, candidates.length)) {
+    // Big menus (like every court pooled) can hit the timeout with a half-finished,
+    // fractional answer. Keep the items it leaned on most and solve again on just those.
+    const leaned = candidates
+      .map((item, i) => ({ item, weight: lock.has(item.id) ? Infinity : Number(solution[`x${i}`]) || 0 }))
+      .filter((c) => c.weight > 0)
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, MAX_ITEMS + 2)
+      .map((c) => c.item);
+    if (leaned.length > 0) {
+      candidates = leaned;
+      solution = solver.Solve(buildModel(candidates, targets, lock));
+    }
+  }
 
   const halves = new Map<string, number>();
-  if (solution.feasible) {
+  if (isUsable(solution, candidates.length)) {
     candidates.forEach((item, i) => {
       const v = solution[`x${i}`];
       if (typeof v === "number" && v >= 0.5) halves.set(item.id, Math.round(v));
@@ -133,6 +146,19 @@ export function optimizeMeal(
   picks.sort((a, b) => ROLE_ORDER.indexOf(a.item.role) - ROLE_ORDER.indexOf(b.item.role));
 
   return { picks, totals: roundNutrition(totals), fitScore: fitScore(totals, targets) };
+}
+
+/** Feasible, whole half-servings, and within the item cap (a timed-out solve can break any of these). */
+function isUsable(solution: Solution, itemCount: number): boolean {
+  if (!solution.feasible) return false;
+  let picked = 0;
+  for (let i = 0; i < itemCount; i++) {
+    const x = solution[`x${i}`];
+    if (typeof x !== "number" || x < 0.5) continue;
+    if (Math.abs(x - Math.round(x)) > 0.01) return false;
+    picked++;
+  }
+  return picked <= MAX_ITEMS;
 }
 
 const ROLE_ORDER: ItemRole[] = ["protein", "carb", "veg", "fruit", "dairy", "other", "sauce", "dessert"];
@@ -244,7 +270,7 @@ function buildModel(items: FoodItem[], t: MacroTargets, lock: Set<string>): Mode
     constraints,
     variables,
     ints,
-    options: { timeout: 2000, tolerance: 0.02 },
+    options: { timeout: 1200, tolerance: 0.02 },
   };
 }
 

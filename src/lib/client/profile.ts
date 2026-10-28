@@ -13,7 +13,8 @@ export const DEFAULT_PROFILE: Profile = {
   sex: "male",
   activity: "moderate",
   goal: "lean_bulk",
-  mealsPerDay: 3,
+  diningMeals: ["Breakfast", "Lunch", "Dinner"],
+  snacksPerDay: 0,
   isTrainingDay: true,
   vegetarian: false,
   vegan: false,
@@ -25,7 +26,15 @@ export const DEFAULT_PROFILE: Profile = {
 function load(): Profile | null {
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? { ...DEFAULT_PROFILE, ...(JSON.parse(raw) as Partial<Profile>) } : null;
+    if (!raw) return null;
+    const saved = JSON.parse(raw) as Partial<Profile> & { mealsPerDay?: number };
+    // Profiles saved before meal choices existed had a meals-per-day count instead.
+    if (!saved.diningMeals && saved.mealsPerDay !== undefined) {
+      if (saved.mealsPerDay <= 2) saved.diningMeals = ["Lunch", "Dinner"];
+      saved.snacksPerDay = Math.max(0, saved.mealsPerDay - 3);
+    }
+    delete saved.mealsPerDay;
+    return { ...DEFAULT_PROFILE, ...saved };
   } catch {
     return null;
   }

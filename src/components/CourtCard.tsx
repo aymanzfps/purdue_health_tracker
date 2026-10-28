@@ -2,17 +2,29 @@ import Link from "next/link";
 import { handLabel } from "./HandPortion";
 import { PLATE_COLORS, PlateDiagram } from "./PlateDiagram";
 import { FitBadge } from "./ui";
+import { courtLabel } from "@/lib/client/meals";
 import type { Recommendation } from "@/lib/types";
 
 /** Compact summary of one court's best plate, used on Compare and Day plan. */
-export function CourtCard({ rec, title, rank }: { rec: Recommendation; title?: string; rank?: number }) {
+export function CourtCard({
+  rec,
+  title,
+  rank,
+  bare,
+}: {
+  rec: Recommendation;
+  title?: string;
+  rank?: number;
+  /** Drop the card frame and header when embedding in another card. */
+  bare?: boolean;
+}) {
   const href = `/?court=${encodeURIComponent(rec.location)}&meal=${encodeURIComponent(rec.meal)}`;
   return (
-    <article className="rounded-2xl bg-card p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
+    <article className={bare ? "" : "rounded-2xl bg-card p-4"}>
+      <div className={`mb-3 flex items-center justify-between gap-2 ${bare ? "hidden" : ""}`}>
         <h3 className="text-sm font-medium">
           {rank !== undefined && <span className="mr-1.5 text-muted tabular-nums">{rank}</span>}
-          {title ?? rec.location}
+          {title ?? courtLabel(rec.location)}
         </h3>
         <FitBadge score={rec.fitScore} />
       </div>
@@ -23,7 +35,10 @@ export function CourtCard({ rec, title, rank }: { rec: Recommendation; title?: s
             <li key={p.item.id} className="flex items-center justify-between gap-2">
               <span className="flex min-w-0 items-center gap-1.5">
                 <span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: PLATE_COLORS[i % PLATE_COLORS.length] }} aria-hidden="true" />
-                <span className="truncate">{p.item.name}</span>
+                <span className="truncate">
+                  {p.item.name}
+                  {p.item.locations && <span className="text-muted"> · {p.item.locations[0]}</span>}
+                </span>
               </span>
               <span className="shrink-0 text-gold">{handLabel(p.portion)}</span>
             </li>

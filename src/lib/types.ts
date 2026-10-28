@@ -30,6 +30,8 @@ export interface FoodItem {
   servingSize: string | null;
   nutrition: Nutrition | null;
   role: ItemRole;
+  /** Courts serving this item; set only on combined "best across all" menus. */
+  locations?: string[];
 }
 
 export interface Meal {
@@ -57,6 +59,9 @@ export interface DiningLocation {
 }
 
 export type Sex = "male" | "female";
+
+export const DAY_MEALS = ["Breakfast", "Lunch", "Dinner"] as const;
+export type DayMeal = (typeof DAY_MEALS)[number];
 
 export type ActivityLevel =
   | "sedentary"
@@ -92,8 +97,10 @@ export interface Profile {
   goal: GoalId;
   /** Used only when goal is "custom". */
   custom?: MacroTargets;
-  /** Number of meals eaten per day (2–5). Dining court meals share most of the day's food. */
-  mealsPerDay: number;
+  /** Dining court meals eaten on a normal day; the day's food is split across them. */
+  diningMeals: DayMeal[];
+  /** Snacks eaten outside the dining courts (0–3); each takes ~10% of the day. */
+  snacksPerDay: number;
   isTrainingDay: boolean;
   vegetarian: boolean;
   vegan: boolean;
@@ -128,9 +135,12 @@ export interface MealPick {
 }
 
 export interface Recommendation {
+  /** A court name, or "all" when items come from several courts. */
   location: string;
   date: string;
   meal: string;
+  /** Serving hours ("HH:MM:SS"), when known for a single court. */
+  hours: { start: string; end: string } | null;
   targets: MacroTargets;
   picks: MealPick[];
   totals: Nutrition;

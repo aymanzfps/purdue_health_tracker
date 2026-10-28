@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Card, Chips, SectionLabel, Toggle } from "@/components/ui";
 import { DEFAULT_PROFILE, useProfile } from "@/lib/client/profile";
 import { ACTIVITY_MULTIPLIERS, CM_PER_IN, dailyTargets, GOALS, LB_PER_KG, tdee } from "@/lib/targets";
-import type { ActivityLevel, GoalId, Profile } from "@/lib/types";
+import { DAY_MEALS, type ActivityLevel, type GoalId, type Profile } from "@/lib/types";
 
 const ALLERGENS = ["Eggs", "Fish", "Gluten", "Milk", "Peanuts", "Sesame", "Shellfish", "Soy", "Tree Nuts", "Wheat", "Coconut"];
 
@@ -232,14 +232,40 @@ export default function ProfilePage() {
         <SectionLabel>Your day</SectionLabel>
         <Toggle label="Training day" hint="More carbs on days you lift" checked={draft.isTrainingDay} onChange={(v) => set("isTrainingDay", v)} />
         <div className="py-2">
-          <span className="mb-1.5 block text-sm">Meals per day</span>
+          <span className="mb-1.5 block text-sm">Dining court meals you eat</span>
+          <div className="flex flex-wrap gap-1.5">
+            {DAY_MEALS.map((meal) => {
+              const on = draft.diningMeals.includes(meal);
+              return (
+                <button
+                  key={meal}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => {
+                    if (on && draft.diningMeals.length === 1) return; // keep at least one meal
+                    set(
+                      "diningMeals",
+                      on ? draft.diningMeals.filter((m) => m !== meal) : DAY_MEALS.filter((m) => m === meal || draft.diningMeals.includes(m)),
+                    );
+                  }}
+                  className={`rounded-lg px-2.5 py-1.5 text-xs transition ${on ? "bg-gold text-ink" : "bg-card-hi text-muted hover:bg-line"}`}
+                >
+                  {meal}
+                </button>
+              );
+            })}
+          </div>
+          <span className="mt-1 block text-xs text-muted">Your day&apos;s food is split across these.</span>
+        </div>
+        <div className="py-2">
+          <span className="mb-1.5 block text-sm">Snacks outside the dining courts</span>
           <Chips
-            label="Meals per day"
-            value={String(draft.mealsPerDay)}
-            onChange={(v) => set("mealsPerDay", Number(v))}
-            options={["2", "3", "4", "5"].map((v) => ({ value: v, label: v }))}
+            label="Snacks per day"
+            value={String(draft.snacksPerDay)}
+            onChange={(v) => set("snacksPerDay", Number(v))}
+            options={["0", "1", "2", "3"].map((v) => ({ value: v, label: v }))}
           />
-          <span className="mt-1 block text-xs text-muted">Meals past 3 count as snacks outside the dining courts.</span>
+          <span className="mt-1 block text-xs text-muted">Each snack sets aside about 10% of the day.</span>
         </div>
       </Card>
 

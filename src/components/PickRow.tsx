@@ -28,7 +28,10 @@ export function PickRow({
         <div className="text-xs text-muted">
           {portion.amountLabel} · {Math.round(totals.protein)}g protein · {Math.round(totals.calories)} kcal
         </div>
-        <div className="truncate text-[11px] text-muted/70">{item.station}</div>
+        <div className="truncate text-[11px] text-muted/70">
+          {item.locations && <span className="text-gold-mid">{item.locations.join(" / ")} · </span>}
+          {item.station}
+        </div>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-0.5">
         <HandPortion portion={portion} />
