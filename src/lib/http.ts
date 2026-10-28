@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { NotFoundError } from "./recommend";
+import { NotFoundError, NotReleasedError } from "./recommend";
 import { ValidationError } from "./validate";
 
 /** Runs a route handler body and turns known errors into JSON responses. */
@@ -8,6 +8,9 @@ export async function handle(fn: () => Promise<unknown>): Promise<NextResponse> 
     return NextResponse.json(await fn());
   } catch (err) {
     if (err instanceof ValidationError) return NextResponse.json({ error: err.message }, { status: 400 });
+    if (err instanceof NotReleasedError) {
+      return NextResponse.json({ error: err.message, code: "not_released" }, { status: 404 });
+    }
     if (err instanceof NotFoundError) return NextResponse.json({ error: err.message }, { status: 404 });
     console.error(err);
     return NextResponse.json({ error: "Couldn't reach Purdue Dining. Try again in a minute." }, { status: 502 });

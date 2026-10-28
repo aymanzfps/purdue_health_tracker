@@ -1,9 +1,9 @@
 import { optimizeMeal, type OptimizeOptions } from "./optimizer";
-import { DINING_COURTS, getDayMenu, NotFoundError } from "./purdue";
+import { DINING_COURTS, getDayMenu, NotFoundError, NotReleasedError } from "./purdue";
 import { dailyTargets, mealTargets } from "./targets";
 import type { DayMenu, FoodItem, Meal, Profile, Recommendation } from "./types";
 
-export { NotFoundError };
+export { NotFoundError, NotReleasedError };
 
 export function findMeal(menu: DayMenu, mealName: string): Meal | undefined {
   const wanted = mealName.trim().toLowerCase();
@@ -31,6 +31,7 @@ export async function recommend(
   opts: OptimizeOptions = {},
 ): Promise<Recommendation> {
   const menu = await getDayMenu(location, date);
+  if (!menu.isPublished) throw new NotReleasedError(`${location}'s menu for ${date} hasn't been released yet`);
   const name = mealName ?? currentMealName(menu);
   const meal = name ? findMeal(menu, name) : undefined;
   if (!meal || meal.status !== "Open" || meal.items.length === 0) {
@@ -57,6 +58,7 @@ export async function recommendAcrossCourts(
   opts: OptimizeOptions = {},
 ): Promise<Recommendation> {
   const menus = await Promise.all(DINING_COURTS.map((court) => getDayMenu(court, date)));
+  if (!menus.some((m) => m.isPublished)) throw new NotReleasedError(`Menus for ${date} haven't been released yet`);
 
   const pooled = new Map<string, FoodItem>();
   const perCourt: FoodItem[][] = [];
@@ -85,7 +87,7 @@ export async function recommendAcrossCourts(
 
 export interface CourtComparison {
   location: string;
-  status: "ok" | "closed";
+  status: "ok" | "closed" | "not_released";
   recommendation?: Recommendation;
 }
 
@@ -100,6 +102,7 @@ export async function compareCourts(
       try {
         return { location, status: "ok", recommendation: await recommend(profile, location, date, mealName) };
       } catch (err) {
+        if (err instanceof NotReleasedError) return { location, status: "not_released" };
         if (err instanceof NotFoundError) return { location, status: "closed" };
         throw err;
       }

@@ -6,8 +6,10 @@ import { MacroBars } from "./MacroBars";
 import { PickRow } from "./PickRow";
 import { CourtPicker, MealPicker } from "./Pickers";
 import { PlateDiagram } from "./PlateDiagram";
-import { Card, ErrorNote, FitBadge, SetupPrompt, Spinner } from "./ui";
-import { api, type MenuResponse } from "@/lib/client/api";
+import { DatePicker } from "./DatePicker";
+import { Card, ErrorNote, FitBadge, NotReleased, SetupPrompt, Spinner } from "./ui";
+import { api, isNotReleased, type MenuResponse } from "@/lib/client/api";
+import { useSelectedDate } from "@/lib/client/date";
 import {
   ALL_COURTS,
   courtLabel,
@@ -37,6 +39,7 @@ export function TodayView() {
   const router = useRouter();
   const params = useSearchParams();
   const { profile, ready, save } = useProfile();
+  const { date, setDate } = useSelectedDate();
 
   const [court, setCourt] = useState<string | null>(null);
   const [meal, setMeal] = useState<string | null>(null);
@@ -46,6 +49,7 @@ export function TodayView() {
   const [exclude, setExclude] = useState<string[]>([]);
   const [lock, setLock] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [notReleased, setNotReleased] = useState(false);
   const [retry, setRetry] = useState(0);
 
   const isAll = court === ALL_COURTS;
@@ -60,6 +64,7 @@ export function TodayView() {
   useEffect(() => {
     if (!court) return;
     setError(null);
+    setNotReleased(false);
     setMenu(null);
     const wanted = params.get("meal");
     if (court === ALL_COURTS) {
@@ -71,8 +76,9 @@ export function TodayView() {
     }
     const ctl = new AbortController();
     api
-      .menu(court, ctl.signal)
+      .menu(court, date, ctl.signal)
       .then((m) => {
+        if (!m.isPublished) return setNotReleased(true);
         setMenu(m);
         const open = m.meals.filter((x) => x.status === "Open").map((x) => x.name);
         setMeal((current) => {
@@ -84,7 +90,7 @@ export function TodayView() {
     return () => ctl.abort();
     // `params` only matters on first load; later meal changes go through setMeal.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [court, retry]);
+  }, [court, date, retry]);
 
   // The recommendation for the chosen court (or all courts) and meal.
   useEffect(() => {
@@ -92,11 +98,15 @@ export function TodayView() {
     const ctl = new AbortController();
     setRec(null);
     api
-      .recommend({ profile, location: court, meal, exclude, lock }, ctl.signal)
+      .recommend({ profile, location: court, date, meal, exclude, lock }, ctl.signal)
       .then(setRec)
-      .catch((e: Error) => e.name !== "AbortError" && setError(e.message));
+      .catch((e: Error) => {
+        if (e.name === "AbortError") return;
+        if (isNotReleased(e)) setNotReleased(true);
+        else setError(e.message);
+      });
     return () => ctl.abort();
-  }, [profile, court, isAll, meal, menu, exclude, lock]);
+  }, [profile, court, isAll, date, meal, menu, exclude, lock]);
 
   // Fit scores for every court tile, plus the "best across all" tile.
   useEffect(() => {
@@ -104,7 +114,7 @@ export function TodayView() {
     const ctl = new AbortController();
     setScores({});
     api
-      .compare({ profile, meal }, ctl.signal)
+      .compare({ profile, meal, date }, ctl.signal)
       .then((r) =>
         setScores((s) => ({
           ...s,
@@ -113,11 +123,11 @@ export function TodayView() {
       )
       .catch(() => {});
     api
-      .recommend({ profile, location: ALL_COURTS, meal }, ctl.signal)
+      .recommend({ profile, location: ALL_COURTS, date, meal }, ctl.signal)
       .then((r) => setScores((s) => ({ ...s, [ALL_COURTS]: r.fitScore })))
       .catch(() => {});
     return () => ctl.abort();
-  }, [profile, meal]);
+  }, [profile, meal, date]);
 
   const chooseCourt = useCallback(
     (next: string) => {
@@ -158,8 +168,12 @@ export function TodayView() {
   return (
     <div className="space-y-5">
       <header className="space-y-4">
+        <DatePicker date={date} onChange={setDate} />
         <div className="flex items-center justify-between gap-2">
-          <p className="text-xs text-muted">{formatDay(rec?.date ?? todayInWestLafayette())}</p>
+          <h1 className="text-2xl font-medium">
+            {court ? courtLabel(court) : "…"}
+            {meal && <span className="text-muted"> · {meal}</span>}
+          </h1>
           <button
             type="button"
             onClick={() => save({ ...profile, isTrainingDay: !profile.isTrainingDay })}
@@ -169,21 +183,18 @@ export function TodayView() {
             {goalLabel} · <span className="text-gold">{profile.isTrainingDay ? "training day" : "rest day"}</span>
           </button>
         </div>
-        <h1 className="-mt-2 text-2xl font-medium">
-          {court ? courtLabel(court) : "…"}
-          {meal && <span className="text-muted"> · {meal}</span>}
-        </h1>
-        <CourtPicker courts={DINING_COURTS} value={court} scores={scores} onChange={chooseCourt} />
-        {meals.length > 0 && <MealPicker meals={meals} value={meal} onChange={chooseMeal} />}
+        <CourtPicker courts={DINING_COURTS} value={court} scores={scores} noScores={notReleased} onChange={chooseCourt} />
+        {meals.length > 0 && !notReleased && <MealPicker meals={meals} value={meal} onChange={chooseMeal} />}
       </header>
 
       {error && <ErrorNote message={error} onRetry={() => setRetry((n) => n + 1)} />}
-      {!error && noMeals && (
+      {notReleased && <NotReleased date={formatDay(date)} onToday={() => setDate(todayInWestLafayette())} />}
+      {!error && !notReleased && noMeals && (
         <Card className="text-sm text-muted">{court} isn&apos;t serving any meals today. Try another court.</Card>
       )}
-      {!error && !noMeals && !rec && <Spinner label={isAll ? "Searching every dining court" : "Building your plate"} />}
+      {!error && !notReleased && !noMeals && !rec && <Spinner label={isAll ? "Searching every dining court" : "Building your plate"} />}
 
-      {rec && (
+      {rec && !notReleased && (
         <>
           {isAll && stops.length > 0 && (
             <Card className="border border-gold/30 text-sm">

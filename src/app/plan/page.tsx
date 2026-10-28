@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { CourtCard } from "@/components/CourtCard";
 import { MacroBars } from "@/components/MacroBars";
-import { Card, ErrorNote, FitBadge, SectionLabel, SetupPrompt, Spinner } from "@/components/ui";
+import { DatePicker } from "@/components/DatePicker";
+import { Card, ErrorNote, FitBadge, NotReleased, SectionLabel, SetupPrompt, Spinner } from "@/components/ui";
 import { api } from "@/lib/client/api";
 import { ALL_COURTS, ALL_COURTS_LABEL, DAY_MEALS, formatDay, formatHours, todayInWestLafayette } from "@/lib/client/meals";
+import { useSelectedDate } from "@/lib/client/date";
 import { useProfile } from "@/lib/client/profile";
 import { DINING_COURTS } from "@/lib/courts";
 import type { CourtComparison } from "@/lib/recommend";
@@ -40,7 +42,7 @@ function pickRec(options: MealOptions, source: Source): Recommendation | null {
 
 export default function PlanPage() {
   const { profile, ready, save } = useProfile();
-  const date = todayInWestLafayette();
+  const { date, setDate } = useSelectedDate();
   const [options, setOptions] = useState<Partial<Record<DayMeal, MealOptions>>>({});
   const [choices, setChoices] = useState<Partial<Record<DayMeal, Source>>>({});
   const [error, setError] = useState<string | null>(null);
@@ -58,14 +60,14 @@ export default function PlanPage() {
     setError(null);
     for (const meal of profile.diningMeals) {
       Promise.all([
-        api.compare({ profile, meal }, ctl.signal),
-        api.recommend({ profile, location: ALL_COURTS, meal }, ctl.signal).catch(() => null),
+        api.compare({ profile, meal, date }, ctl.signal),
+        api.recommend({ profile, location: ALL_COURTS, date, meal }, ctl.signal).catch(() => null),
       ])
         .then(([cmp, all]) => setOptions((o) => ({ ...o, [meal]: { courts: cmp.courts, all } })))
         .catch((e: Error) => e.name !== "AbortError" && setError(e.message));
     }
     return () => ctl.abort();
-  }, [profile, retry]);
+  }, [profile, date, retry]);
 
   const choose = (meal: DayMeal, source: Source) => {
     const next = { ...choices, [meal]: source };
@@ -102,45 +104,51 @@ export default function PlanPage() {
     { calories: 0, protein: 0, carbs: 0, fat: 0 } as MacroTargets,
   );
   const loading = planned.some((p) => !p.opts);
+  const notReleased =
+    !loading && planned.every((p) => p.opts!.courts.length > 0 && p.opts!.courts.every((c) => c.status === "not_released"));
 
   return (
     <div className="space-y-5">
       <header>
-        <p className="text-xs text-muted">{formatDay(date)}</p>
-        <h1 className="text-2xl font-medium">Day plan</h1>
+        <DatePicker date={date} onChange={setDate} />
+        <h1 className="mt-1 text-2xl font-medium">Day plan</h1>
       </header>
 
       <MealSettings profile={profile} onChange={save} />
 
       {error && <ErrorNote message={error} onRetry={() => setRetry((n) => n + 1)} />}
 
-      <DayTotals totals={totals} daily={daily} loading={loading} snacks={profile.snacksPerDay} />
+      {notReleased ? (
+        <NotReleased date={formatDay(date)} onToday={() => setDate(todayInWestLafayette())} />
+      ) : (
+        <>
+          <DayTotals totals={totals} daily={daily} loading={loading} snacks={profile.snacksPerDay} />
 
-      <ol className="relative space-y-4 border-l border-line pl-5">
-        {planned.map(({ meal, source, opts, rec }) => (
-          <li key={meal} className="relative">
-            <span className="absolute top-1.5 -left-[26px] h-3 w-3 rounded-full border-2 border-gold bg-ink" aria-hidden="true" />
-            <div className="mb-2 flex items-baseline justify-between gap-2">
-              <h2 className="text-base font-medium">
-                {meal}
-                {rec?.hours && <span className="ml-2 text-xs font-normal text-muted">{formatHours(rec.hours)}</span>}
-              </h2>
-              {rec && <FitBadge score={rec.fitScore} />}
-            </div>
-            <Card>
-              {!opts ? (
-                <Spinner label={`Planning ${meal.toLowerCase()}`} />
-              ) : (
-                <>
-                  <SourcePicker opts={opts} value={source} onChange={(s) => choose(meal, s)} />
-                  <div className="mt-3">
-                    {rec ? (
-                      <CourtCard rec={rec} bare />
-                    ) : (
-                      <p className="text-sm text-muted">No dining court is serving {meal.toLowerCase()} today.</p>
-                    )}
-                  </div>
-                </>
+          <ol className="relative space-y-4 border-l border-line pl-5">
+            {planned.map(({ meal, source, opts, rec }) => (
+              <li key={meal} className="relative">
+                <span className="absolute top-1.5 -left-[26px] h-3 w-3 rounded-full border-2 border-gold bg-ink" aria-hidden="true" />
+                <div className="mb-2 flex items-baseline justify-between gap-2">
+                  <h2 className="text-base font-medium">
+                    {meal}
+                    {rec?.hours && <span className="ml-2 text-xs font-normal text-muted">{formatHours(rec.hours)}</span>}
+                  </h2>
+                  {rec && <FitBadge score={rec.fitScore} />}
+                </div>
+                <Card>
+                  {!opts ? (
+                    <Spinner label={`Planning ${meal.toLowerCase()}`} />
+                  ) : (
+                    <>
+                      <SourcePicker opts={opts} value={source} onChange={(s) => choose(meal, s)} />
+                      <div className="mt-3">
+                        {rec ? (
+                          <CourtCard rec={rec} bare />
+                        ) : (
+                          <p className="text-sm text-muted">No dining court is serving {meal.toLowerCase()} today.</p>
+                        )}
+                      </div>
+        </>
               )}
             </Card>
           </li>
@@ -155,6 +163,8 @@ export default function PlanPage() {
           </li>
         )}
       </ol>
+        </>
+      )}
     </div>
   );
 }

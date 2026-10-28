@@ -4,7 +4,7 @@ import type { FoodItem, ItemRole } from "./types";
 // name first (most reliable) and fall back to its macro split.
 
 const DESSERT =
-  /\b(cookies?|cake|brownies?|cheesecake|crisp|muffins?|pie|sundae|italian ice|dessert|donuts?|doughnuts?|pastry|fudge|pudding|cobbler|cinnamon roll|cupcakes?|ice cream|blondies?|danish|scones?|churros?|macarons?)\b/i;
+  /\b(cookies?|cake|coffee ?cake|brownies?|cheesecake|crisp|muffins?|pie|sundae|italian ice|dessert|donuts?|doughnuts?|pastry|fudge|pudding|cobbler|cinnamon roll|cupcakes?|ice cream|blondies?|danish|scones?|churros?|macarons?)\b/i;
 
 // Matched against the LAST word so "Meatballs with Spaghetti Sauce" isn't a sauce.
 const SAUCE_LAST_WORD =

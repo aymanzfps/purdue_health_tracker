@@ -116,3 +116,18 @@ export function SetupPrompt() {
     </Card>
   );
 }
+
+/** Purdue hasn't posted this day's menus yet. */
+export function NotReleased({ date, onToday }: { date: string; onToday?: () => void }) {
+  return (
+    <Card className="text-center">
+      <p className="text-base font-medium text-gold">Menus aren&apos;t out yet</p>
+      <p className="mt-1 text-sm text-muted">Purdue Dining hasn&apos;t released the menus for {date}. Check back closer to the day.</p>
+      {onToday && (
+        <button type="button" onClick={onToday} className="mt-3 rounded-lg bg-card-hi px-3 py-1.5 text-xs hover:bg-line">
+          Back to today
+        </button>
+      )}
+    </Card>
+  );
+}

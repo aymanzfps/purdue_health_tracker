@@ -4,6 +4,7 @@ import type { DayMenu, DiningLocation, FoodItem, Meal, Nutrition } from "./types
 
 const BASE = "https://api.hfs.purdue.edu/menus/v2";
 const MENU_TTL_MS = 60 * 60 * 1000; // menus can change during the day
+const UNRELEASED_MENU_TTL_MS = 10 * 60 * 1000; // check again soon for newly posted menus
 const ITEM_TTL_MS = 7 * 24 * 60 * 60 * 1000; // nutrition facts rarely change
 const LOCATIONS_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_CONCURRENT_ITEM_FETCHES = 8;
@@ -71,17 +72,24 @@ interface CacheEntry<T> {
 const globalCache = globalThis as unknown as { __purdueCache?: Map<string, CacheEntry<unknown>> };
 const cache = (globalCache.__purdueCache ??= new Map());
 
-function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
+/** `ttlMs` can depend on the loaded value (e.g. recheck unreleased menus sooner). */
+function cached<T>(key: string, ttlMs: number | ((value: T) => number), load: () => Promise<T>): Promise<T> {
   const hit = cache.get(key) as CacheEntry<T> | undefined;
   if (hit && hit.expires > Date.now()) return hit.value;
   const value = load();
-  cache.set(key, { expires: Date.now() + ttlMs, value });
+  const initialTtl = typeof ttlMs === "number" ? ttlMs : MENU_TTL_MS;
+  const entry: CacheEntry<T> = { expires: Date.now() + initialTtl, value };
+  cache.set(key, entry);
+  if (typeof ttlMs === "function") value.then((v) => (entry.expires = Date.now() + ttlMs(v)), () => {});
   // Failed loads must not stay cached.
   value.catch(() => cache.delete(key));
   return value;
 }
 
 export class NotFoundError extends Error {}
+
+/** Purdue hasn't posted the menu for that day yet. */
+export class NotReleasedError extends NotFoundError {}
 
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -131,7 +139,7 @@ export async function getDayMenu(requested: string, date: string): Promise<DayMe
   if (!known) throw new NotFoundError(`There's no Purdue dining location called "${requested}"`);
   const location = known.name;
 
-  return cached(`menu:${location}:${date}`, MENU_TTL_MS, async () => {
+  return cached(`menu:${location}:${date}`, (m: DayMenu) => (m.isPublished ? MENU_TTL_MS : UNRELEASED_MENU_TTL_MS), async () => {
     const raw = await getJson<RawDayMenu>(
       `/locations/${encodeURIComponent(location)}/${date}`,
     );
@@ -172,7 +180,10 @@ export async function getDayMenu(requested: string, date: string): Promise<DayMe
       };
     });
 
-    return { location: raw.Location, date, isPublished: raw.IsPublished, meals };
+    // Unreleased days come back unpublished, with no meals or meals marked
+    // "Unavailable" and no food. Treat a published day with no food the same way.
+    const isPublished = raw.IsPublished && meals.some((m) => m.items.length > 0);
+    return { location: raw.Location, date, isPublished, meals };
   });
 }
 

@@ -25,12 +25,15 @@ export function CourtPicker({
   courts,
   value,
   scores,
+  noScores,
   onChange,
 }: {
   courts: string[];
   value: string | null;
   /** Fit score per court name (and "all"), once known. */
   scores: Record<string, number | undefined>;
+  /** No menus to score (e.g. the day isn't released yet): show a dash instead of loading dots. */
+  noScores?: boolean;
   onChange: (court: string) => void;
 }) {
   const tiles = [ALL, ...courts];
@@ -63,7 +66,9 @@ export function CourtPicker({
                 {isAll ? ALL_COURTS_LABEL : court}
               </span>
               <span className="mt-0.5 text-[11px] text-muted tabular-nums">
-                {score === undefined ? (
+                {noScores ? (
+                  "—"
+                ) : score === undefined ? (
                   "…"
                 ) : (
                   <>
