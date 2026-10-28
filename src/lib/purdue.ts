@@ -1,4 +1,5 @@
 import { classifyItem } from "./classify";
+import { DINING_COURTS } from "./courts";
 import type { DayMenu, DiningLocation, FoodItem, Meal, Nutrition } from "./types";
 
 const BASE = "https://api.hfs.purdue.edu/menus/v2";
@@ -7,7 +8,7 @@ const ITEM_TTL_MS = 7 * 24 * 60 * 60 * 1000; // nutrition facts rarely change
 const LOCATIONS_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_CONCURRENT_ITEM_FETCHES = 8;
 
-export const DINING_COURTS = ["Earhart", "Ford", "Hillenbrand", "Wiley", "Windsor"];
+export { DINING_COURTS };
 
 // ---- Purdue API response shapes (only the fields we use) ----
 
