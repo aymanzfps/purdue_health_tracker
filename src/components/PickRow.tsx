@@ -1,4 +1,8 @@
+"use client";
+
+import { useState } from "react";
 import { HandPortion, handLabel } from "./HandPortion";
+import { NutritionSheet } from "./NutritionSheet";
 import { PLATE_COLORS } from "./PlateDiagram";
 import type { MealPick } from "@/lib/types";
 
@@ -16,6 +20,7 @@ export function PickRow({
   onToggleLock?: () => void;
 }) {
   const { item, totals, portion } = pick;
+  const [open, setOpen] = useState(false);
   return (
     <li className="flex items-center gap-3 border-b border-line py-3 last:border-b-0">
       <span
@@ -23,8 +28,13 @@ export function PickRow({
         style={{ background: PLATE_COLORS[index % PLATE_COLORS.length] }}
         aria-hidden="true"
       />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm">{item.name}</div>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label={`Nutrition facts for ${item.name}`}
+        className="group min-w-0 flex-1 cursor-pointer rounded-md text-left focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:outline-none"
+      >
+        <div className="truncate text-sm group-hover:text-gold">{item.name}</div>
         <div className="text-xs text-muted">
           {portion.amountLabel} · {Math.round(totals.protein)}g protein · {Math.round(totals.calories)} kcal
         </div>
@@ -32,7 +42,7 @@ export function PickRow({
           {item.locations && <span className="text-gold-mid">{item.locations.join(" / ")} · </span>}
           {item.station}
         </div>
-      </div>
+      </button>
       <div className="flex shrink-0 flex-col items-end gap-0.5">
         <HandPortion portion={portion} />
         <span className="text-[11px] text-gold">{handLabel(portion)}</span>
@@ -68,6 +78,7 @@ export function PickRow({
           )}
         </div>
       )}
+      <NutritionSheet pick={open ? pick : null} onClose={() => setOpen(false)} />
     </li>
   );
 }
