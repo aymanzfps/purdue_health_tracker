@@ -104,6 +104,10 @@ export interface Profile {
   isTrainingDay: boolean;
   vegetarian: boolean;
   vegan: boolean;
+  /** Hide pork, gelatin and alcohol. Purdue doesn't certify halal food. */
+  halal: boolean;
+  /** Halal rules plus no shellfish and no meat with dairy. Not certified. */
+  kosher: boolean;
   /** Purdue allergen names to avoid, e.g. ["Peanuts", "Shellfish"]. */
   avoidAllergens: string[];
   /** Case-insensitive substrings; matching items are never recommended. */

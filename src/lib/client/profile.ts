@@ -18,6 +18,8 @@ export const DEFAULT_PROFILE: Profile = {
   isTrainingDay: true,
   vegetarian: false,
   vegan: false,
+  halal: false,
+  kosher: false,
   avoidAllergens: [],
   dislikes: [],
   allowDessert: false,

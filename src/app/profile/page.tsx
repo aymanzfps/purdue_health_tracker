@@ -273,6 +273,18 @@ export default function ProfilePage() {
         <SectionLabel>Food preferences</SectionLabel>
         <Toggle label="Vegetarian" checked={draft.vegetarian} onChange={(v) => set("vegetarian", v)} />
         <Toggle label="Vegan" checked={draft.vegan} onChange={(v) => set("vegan", v)} />
+        <Toggle
+          label="Halal"
+          hint="Hides pork, gelatin and alcohol. Purdue doesn't certify meat as halal."
+          checked={draft.halal}
+          onChange={(v) => set("halal", v)}
+        />
+        <Toggle
+          label="Kosher"
+          hint="Also hides shellfish and meat with dairy. Not certified kosher."
+          checked={draft.kosher}
+          onChange={(v) => set("kosher", v)}
+        />
         <Toggle label="Allow a dessert" hint="Up to one serving per meal" checked={draft.allowDessert} onChange={(v) => set("allowDessert", v)} />
         <div className="py-2">
           <span className="mb-1.5 block text-sm">Avoid allergens</span>

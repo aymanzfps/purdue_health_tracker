@@ -1,4 +1,5 @@
 import solver, { type Model, type Solution } from "javascript-lp-solver";
+import { isHalalFriendly, isKosherFriendly } from "./diet";
 import { portionVisual } from "./portion";
 import type {
   FoodItem,
@@ -83,6 +84,8 @@ export function filterForProfile(items: FoodItem[], profile: Profile, opts: Opti
     if (exclude.has(item.id) && !lock.has(item.id)) return false;
     if (profile.vegan && !item.isVegan) return false;
     if (profile.vegetarian && !item.isVegetarian && !item.isVegan) return false;
+    if (profile.halal && !isHalalFriendly(item)) return false;
+    if (profile.kosher && !isKosherFriendly(item)) return false;
     if (item.allergens.some((a) => avoid.has(a.toLowerCase()))) return false;
     if (dislikes.some((d) => item.name.toLowerCase().includes(d))) return false;
     if (item.role === "dessert" && !profile.allowDessert && !lock.has(item.id)) return false;

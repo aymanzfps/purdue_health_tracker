@@ -43,6 +43,8 @@ export function parseProfile(raw: unknown): Profile {
     isTrainingDay: Boolean(p.isTrainingDay),
     vegetarian: Boolean(p.vegetarian),
     vegan: Boolean(p.vegan),
+    halal: Boolean(p.halal),
+    kosher: Boolean(p.kosher),
     avoidAllergens: strings(p.avoidAllergens, "avoidAllergens"),
     dislikes: strings(p.dislikes, "dislikes"),
     allowDessert: Boolean(p.allowDessert),
