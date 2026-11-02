@@ -91,9 +91,13 @@ export class NotFoundError extends Error {}
 /** Purdue hasn't posted the menu for that day yet. */
 export class NotReleasedError extends NotFoundError {}
 
-async function getJson<T>(path: string): Promise<T> {
+/**
+ * `revalidateSec` puts the response in Next's data cache. On Vercel that cache is shared by
+ * every function instance and survives cold starts, unlike the in-memory cache above.
+ */
+async function getJson<T>(path: string, revalidateSec: number): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
-    cache: "no-store",
+    next: { revalidate: revalidateSec },
     headers: { Accept: "application/json" },
   });
   if (res.status === 404 || res.status === 400) throw new NotFoundError(`Purdue Dining has nothing at ${path}`);
@@ -112,7 +116,7 @@ export function todayInWestLafayette(): string {
 
 export function getLocations(): Promise<DiningLocation[]> {
   return cached("locations", LOCATIONS_TTL_MS, async () => {
-    const raw = await getJson<RawLocations>("/locations");
+    const raw = await getJson<RawLocations>("/locations", LOCATIONS_TTL_MS / 1000);
     return raw.Location.map((l) => ({
       id: l.LocationId,
       name: l.Name,
@@ -127,7 +131,7 @@ export function getItemNutrition(
   id: string,
 ): Promise<{ servingSize: string | null; nutrition: Nutrition | null }> {
   return cached(`item:${id}`, ITEM_TTL_MS, async () => {
-    const raw = await getJson<RawItemDetail>(`/items/${id}`);
+    const raw = await getJson<RawItemDetail>(`/items/${id}`, ITEM_TTL_MS / 1000);
     return parseNutrition(raw.Nutrition ?? []);
   });
 }
@@ -142,6 +146,8 @@ export async function getDayMenu(requested: string, date: string): Promise<DayMe
   return cached(`menu:${location}:${date}`, (m: DayMenu) => (m.isPublished ? MENU_TTL_MS : UNRELEASED_MENU_TTL_MS), async () => {
     const raw = await getJson<RawDayMenu>(
       `/locations/${encodeURIComponent(location)}/${date}`,
+      // Short, so newly released or changed menus show up soon.
+      UNRELEASED_MENU_TTL_MS / 1000,
     );
     const rawMeals = raw.Meals ?? [];
 
